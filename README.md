@@ -11,8 +11,6 @@ A comprehensive, cloud-enabled library management system built for Greenfield Un
 
 ## 📸 Screenshots
 
-> **Note on Missing Images (404 Error):** The screenshots are currently "404 Not Found" on GitHub because the `assets/` directory is empty in the repository. Git doesn't track empty folders, and I don't have direct access to your local machine to save the files from our chat. **To fix the 404 error:** Please manually save the 5 images you just uploaded into the `assets/` folder in your project using the exact names below, and then push them to GitHub.
-
 ### 1. Student / Admin Login & Registration
 ![Login and Register](./assets/login-register.png)
 
