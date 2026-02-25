@@ -4,7 +4,33 @@ A comprehensive, cloud-enabled library management system built for Greenfield Un
 
 ---
 
-## 🌟 Key Features
+### � Live Demo
+**[Instant Library Platform](https://instant-library-frontend.vercel.app/)**
+
+---
+
+## 📸 Screenshots
+
+> **Note on Missing Images (404 Error):** The screenshots are currently "404 Not Found" on GitHub because the `assets/` directory is empty in the repository. Git doesn't track empty folders, and I don't have direct access to your local machine to save the files from our chat. **To fix the 404 error:** Please manually save the 5 images you just uploaded into the `assets/` folder in your project using the exact names below, and then push them to GitHub.
+
+### 1. Student / Admin Login & Registration
+![Login and Register](./assets/login-register.png)
+
+### 2. Student Dashboard - Library Collection
+![Student Dashboard](./assets/student-dashboard.png)
+
+### 3. Student - Book Requests Log
+![Student Requests Log](./assets/student-requests.png)
+
+### 4. Admin Dashboard - Manage Books
+![Admin Dashboard](./assets/admin-dashboard.png)
+
+### 5. Admin - Book Requests Log
+![Admin Requests Log](./assets/admin-requests.png)
+
+---
+
+## �🌟 Key Features
 
 ### Student Portal
 - **Authentication**: Secure Login and Registration using a Greenfield University email address.
@@ -31,27 +57,6 @@ Greenfield Library is a fully robust, cloud-enabled application leveraging moder
 - **Amazon DynamoDB**: A highly scalable NoSQL database utilized for storing book metadata, user accounts, and real-time transaction logs of borrow requests.
 - **Amazon EC2**: The Node.js production backend server is hosted on reliable EC2 instances, ensuring low latency and consistent uptime.
 - **Amazon SNS (Simple Notification Service)**: (Integrated) Used to asynchronously trigger event-driven notifications—such as instant updates to students when their book requests are approved.
-
----
-
-## 📸 Screenshots
-
-*(To be populated: Save the provided screenshots in the `assets/` directory with the following filenames to render them here.)*
-
-### 1. Student / Admin Login & Registration
-![Login and Register](./assets/login-register.png)
-
-### 2. Student Dashboard - Library Collection
-![Student Dashboard](./assets/student-dashboard.png)
-
-### 3. Student - Book Requests Log
-![Student Requests Log](./assets/student-requests.png)
-
-### 4. Admin Dashboard - Manage Books
-![Admin Dashboard](./assets/admin-dashboard.png)
-
-### 5. Admin - Book Requests Log
-![Admin Requests Log](./assets/admin-requests.png)
 
 ---
 
