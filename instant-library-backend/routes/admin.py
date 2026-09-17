@@ -62,7 +62,11 @@ def clear_all_requests():
 @admin_only
 def update_request(request_id):
     try:
-        status = get_json_body().get("status")
+        body = get_json_body()
+        if "status" not in body:
+            # Same as the JS version: a missing status fails the update instead of writing NULL
+            raise ValueError("status is required")
+        status = body["status"]
 
         # If approving, decrement the book's available copies
         if status == "approved":

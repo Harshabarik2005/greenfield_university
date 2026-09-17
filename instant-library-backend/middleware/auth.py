@@ -28,6 +28,8 @@ def auth_required(fn):
         user = db.find("users", id=payload.get("id"))
         if not user:
             return jsonify({"error": "User not found"}), 401
+        if not user.get("emailVerified", True):
+            return jsonify({"error": "Email not verified"}), 401
         g.user = {
             "id": user.get("id"),
             "email": user.get("email"),

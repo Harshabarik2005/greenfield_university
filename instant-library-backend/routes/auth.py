@@ -1,4 +1,4 @@
-# routes/auth.py
+# routes/auth.py - password login + email OTP (2-step) and signup email verification
 import math
 import os
 import re
@@ -10,6 +10,15 @@ from flask import Blueprint, jsonify
 from nanoid import generate as nanoid
 
 from db import db
+from services.otp_service import (
+    PURPOSE_LOGIN,
+    PURPOSE_REGISTER,
+    OtpError,
+    ensure_can_send,
+    resend_challenge,
+    start_challenge,
+    verify_challenge,
+)
 from utils.helpers import get_json_body
 
 auth_bp = Blueprint("auth", __name__)
@@ -18,7 +27,7 @@ auth_bp = Blueprint("auth", __name__)
 # At least 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special character
 SPECIAL_CHARS = r"""!@#$%^&*()_\-+={}\[\]:;"'<>,.?/\\|`~"""
 PASSWORD_REGEX = re.compile(
-    rf"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[{SPECIAL_CHARS}])[A-Za-z\d{SPECIAL_CHARS}]{{8,}}$"
+    rf"^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[{SPECIAL_CHARS}])[A-Za-z0-9{SPECIAL_CHARS}]{{8,}}$"
 )
 
 
@@ -30,7 +39,7 @@ def validate_password(pw):
         errors.append("one lowercase letter")
     if not re.search(r"[A-Z]", pw):
         errors.append("one uppercase letter")
-    if not re.search(r"\d", pw):
+    if not re.search(r"[0-9]", pw):  # ASCII digits only, like JS \d
         errors.append("one digit")
     if not re.search(rf"[{SPECIAL_CHARS}]", pw):
         errors.append("one special character")
@@ -93,7 +102,12 @@ def public_user(user):
     return {"id": user["id"], "name": user["name"], "email": user["email"], "role": user["role"]}
 
 
-# ─── Student Registration ──────────────────────────────────────
+def otp_error(err):
+    payload, status = err.to_response()
+    return jsonify(payload), status
+
+
+# ─── Student Registration (step 1: create unverified account, email a code) ─────
 @auth_bp.route("/register", methods=["POST"])
 def register():
     body = get_json_body()
@@ -102,11 +116,13 @@ def register():
     password = body.get("password")
     phone = body.get("phone")
 
-    if not name or not email or not password:
+    if not name or not isinstance(email, str) or not email or not isinstance(password, str) or not password:
         return jsonify({"error": "name, email, password required"}), 400
 
+    email = email.strip().lower()
+
     # Email must end with @greenfield.edu
-    if not email.lower().endswith("@greenfield.edu"):
+    if not email.endswith("@greenfield.edu"):
         return jsonify({"error": "Email must end with @greenfield.edu"}), 400
 
     # Password policy
@@ -114,25 +130,41 @@ def register():
     if pw_errors:
         return jsonify({"error": f"Password must contain: {', '.join(pw_errors)}"}), 400
 
-    exists = db.find("users", email=email.lower())
-    if exists:
+    existing = db.find("users", email=email)
+    if existing and existing.get("emailVerified", True):
         return jsonify({"error": "An account with this email already exists"}), 400
 
-    user = {
-        "id": nanoid(),
-        "name": name,
-        "email": email.lower(),
-        "passwordHash": hash_password(password),
-        "role": "student",
-        "phone": phone or None,
-    }
-    db.push("users", user)
+    password_hash = hash_password(password)
 
-    token = sign_token(user)
-    return jsonify({"token": token, "user": public_user(user)})
+    try:
+        with db.lock:
+            user = db.find("users", email=email)
+            if user and user.get("emailVerified", True):
+                return jsonify({"error": "An account with this email already exists"}), 400
+
+            if user:
+                # Registered before but never verified: whoever owns the inbox can register again
+                ensure_can_send(user, PURPOSE_REGISTER)
+                user.update({"name": name, "passwordHash": password_hash, "phone": phone or None})
+                db.write()
+            else:
+                user = {
+                    "id": nanoid(),
+                    "name": name,
+                    "email": email,
+                    "passwordHash": password_hash,
+                    "role": "student",
+                    "phone": phone or None,
+                    "emailVerified": False,
+                }
+                db.push("users", user)
+
+        return jsonify(start_challenge(user, PURPOSE_REGISTER))
+    except OtpError as err:
+        return otp_error(err)
 
 
-# ─── Login (shared for student & admin) ────────────────────────
+# ─── Login (shared for student & admin; step 1: password, then email a code) ────
 @auth_bp.route("/login", methods=["POST"])
 def login():
     body = get_json_body()
@@ -140,10 +172,10 @@ def login():
     password = body.get("password")
     role = body.get("role")
 
-    if not email or not password:
+    if not isinstance(email, str) or not email or not isinstance(password, str) or not password:
         return jsonify({"error": "email, password required"}), 400
 
-    user = db.find("users", email=email.lower())
+    user = db.find("users", email=email.strip().lower())
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -158,5 +190,33 @@ def login():
     if not check_password(password, user["passwordHash"]):
         return jsonify({"error": "Invalid credentials"}), 401
 
+    # Accounts that never finished signup get a verification code instead of a sign-in code
+    purpose = PURPOSE_LOGIN if user.get("emailVerified", True) else PURPOSE_REGISTER
+
+    try:
+        return jsonify(start_challenge(user, purpose))
+    except OtpError as err:
+        return otp_error(err)
+
+
+# ─── Step 2: verify the emailed code and issue the JWT ─────────────────────────
+@auth_bp.route("/verify-otp", methods=["POST"])
+def verify_otp():
+    body = get_json_body()
+    try:
+        user = verify_challenge(body.get("challengeId"), body.get("code"))
+    except OtpError as err:
+        return otp_error(err)
+
     token = sign_token(user)
     return jsonify({"token": token, "user": public_user(user)})
+
+
+# ─── Resend a code for an in-progress sign-in / signup ─────────────────────────
+@auth_bp.route("/resend-otp", methods=["POST"])
+def resend_otp():
+    body = get_json_body()
+    try:
+        return jsonify(resend_challenge(body.get("challengeId")))
+    except OtpError as err:
+        return otp_error(err)

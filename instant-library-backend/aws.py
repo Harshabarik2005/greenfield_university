@@ -4,7 +4,7 @@ from decimal import Decimal
 import boto3
 from botocore.config import Config
 
-REGION = os.getenv("AWS_REGION", "ap-south-1")
+REGION = os.getenv("AWS_REGION") or "ap-south-1"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 

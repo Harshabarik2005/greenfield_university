@@ -31,14 +31,14 @@ A comprehensive, cloud-enabled library management system built for Greenfield Un
 ##  🌟 Key Features
 
 ### Student Portal
-- **Authentication**: Secure Login and Registration using a Greenfield University email address.
+- **Authentication**: Secure Login and Registration using a Greenfield University email address, with email-based OTP: every sign-in is a 2-step password + 6-digit emailed code, and new accounts must verify their email before use.
 - **Library Collection**: Browse a vast catalog of available physical and digital books.
 - **Search & Filtering**: Search titles directly, or filter the collection by authors and subjects.
 - **Borrowing & Access**: Request physical copies or instantly access PDF versions of materials.
 - **Request Tracking**: Real-time status tracking for all book borrow requests (Pending, Approved, Rejected).
 
 ### Admin Portal
-- **Secure Access**: Dedicated administrator login.
+- **Secure Access**: Dedicated administrator login protected by the same password + email OTP 2-step verification.
 - **Catalog Management**: Add new books to the library, upload cover images, and attach digital PDF/eBooks.
 - **Request Moderation**: Review all student borrow requests and log actions by approving or clearing them.
 - **Real-time Previews**: Instantly view the available copies, live catalog previews, and system metrics.

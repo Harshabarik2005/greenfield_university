@@ -7,6 +7,7 @@ import Sidebar from "./components/Sidebar";
 import Navbar from "./components/Navbar";
 import FormInput from "./components/FormInput";
 import S3Thumbnail from "./components/S3Thumbnail";
+import OtpVerification from "./components/OtpVerification";
 
 const API = `${import.meta.env.VITE_API_URL}/api`;
 
@@ -57,6 +58,12 @@ export default function App() {
   const [confirmPw, setConfirmPw] = useState("");
   const [loginMode, setLoginMode] = useState("student"); // "student" | "admin" | "register"
 
+  /* Email OTP – second step of sign-in / signup */
+  const [otp, setOtp] = useState(null); // { challengeId, email, flow, demoCode, expiresAt, resendAt }
+  const [otpCode, setOtpCode] = useState("");
+  const [resending, setResending] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
   /* Books */
   const [books, setBooks] = useState([]);
   const [booksLoading, setBooksLoading] = useState(false);
@@ -101,9 +108,18 @@ export default function App() {
 
   useEffect(() => { if (user) { fetchBooks(); fetchRequests(); } }, [user]);
 
+  // Tick every second while the code step is open (expiry + resend countdowns)
+  useEffect(() => {
+    if (!otp) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [otp]);
+
   // Clear form when switching login modes
   function switchMode(mode) {
     setLoginMode(mode);
+    setOtp(null);
+    setOtpCode("");
     setError("");
     setEmail("");
     setPassword("");
@@ -122,7 +138,40 @@ export default function App() {
   ];
   const pwAllPass = pwChecks.every(c => c.ok);
 
+  const otpSecondsLeft = otp ? Math.max(0, Math.ceil((otp.expiresAt - now) / 1000)) : 0;
+  const resendSecondsLeft = otp ? Math.max(0, Math.ceil((otp.resendAt - now) / 1000)) : 0;
+
   // ── Auth ──────────────────────────────────────────────────────────────────
+  function completeSignIn(data, welcome) {
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    setUser(data.user);
+    setActiveView(data.user.role === "admin" ? "manage" : "library");
+    addToast(welcome, "success");
+  }
+
+  // Password / signup step passed → the server emailed a code; show the code step
+  function startOtp(data, flow) {
+    const t = Date.now();
+    setOtp({
+      challengeId: data.challengeId,
+      email: data.email || email,
+      flow: data.purpose === "register" ? "register" : flow,
+      demoCode: data.demoCode || "",
+      expiresAt: t + (data.expiresIn ?? 600) * 1000,
+      resendAt: t + (data.resendIn ?? 30) * 1000,
+    });
+    setNow(t);
+    setOtpCode("");
+    setError("");
+  }
+
+  function cancelOtp() {
+    setOtp(null);
+    setOtpCode("");
+    setError("");
+  }
+
   async function login(e) {
     e.preventDefault(); setError(""); setAuthLoading(true);
     try {
@@ -132,13 +181,56 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Invalid credentials"); return; }
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      setUser(data.user);
-      setActiveView(data.user.role === "admin" ? "manage" : "library");
-      addToast(`Welcome back, ${data.user.name}!`, "success");
+      if (data.otpRequired) { startOtp(data, loginMode); return; }
+      completeSignIn(data, `Welcome back, ${data.user.name}!`);
     } catch { setError("Could not reach the server."); }
     finally { setAuthLoading(false); }
+  }
+
+  async function verifyOtp(e) {
+    e.preventDefault(); setError("");
+    if (!/^\d{6}$/.test(otpCode)) { setError("Enter the 6-digit code from your email"); return; }
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${API}/auth/verify-otp`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: otp.challengeId, code: otpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOtpCode("");
+        if (data.restart) setOtp(null); // session is gone – back to the password form
+        setError(data.error || "Verification failed");
+        return;
+      }
+      const isNewAccount = otp.flow === "register";
+      setOtp(null); setOtpCode(""); setPassword(""); setConfirmPw("");
+      completeSignIn(data, isNewAccount
+        ? `Welcome, ${data.user.name}! Your account is ready.`
+        : `Welcome back, ${data.user.name}!`);
+    } catch { setError("Could not reach the server."); }
+    finally { setAuthLoading(false); }
+  }
+
+  async function resendOtp() {
+    if (!otp) return;
+    setError(""); setResending(true);
+    try {
+      const res = await fetch(`${API}/auth/resend-otp`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: otp.challengeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.restart) setOtp(null);
+        else if (data.retryAfter) setOtp(o => o && { ...o, resendAt: Date.now() + data.retryAfter * 1000 });
+        setError(data.error || "Could not resend the code");
+        return;
+      }
+      startOtp(data, otp.flow);
+      addToast("A new code is on its way.", "info");
+    } catch { setError("Could not reach the server."); }
+    finally { setResending(false); }
   }
 
   async function register(e) {
@@ -160,11 +252,8 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Registration failed"); return; }
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      setUser(data.user);
-      setActiveView("library");
-      addToast(`Welcome, ${data.user.name}! Your account is ready.`, "success");
+      if (data.otpRequired) { startOtp(data, "register"); return; }
+      completeSignIn(data, `Welcome, ${data.user.name}! Your account is ready.`);
     } catch { setError("Could not reach the server."); }
     finally { setAuthLoading(false); }
   }
@@ -345,8 +434,27 @@ export default function App() {
                   ))}
                 </div>
 
+                {/* ── EMAIL CODE STEP (2-step sign-in / signup verification) ── */}
+                {otp && (
+                  <OtpVerification
+                    email={otp.email}
+                    flow={otp.flow}
+                    demoCode={otp.demoCode}
+                    code={otpCode}
+                    onCodeChange={setOtpCode}
+                    secondsLeft={otpSecondsLeft}
+                    resendIn={resendSecondsLeft}
+                    onSubmit={verifyOtp}
+                    onResend={resendOtp}
+                    onBack={cancelOtp}
+                    loading={authLoading}
+                    resending={resending}
+                    error={error}
+                  />
+                )}
+
                 {/* ── STUDENT LOGIN ── */}
-                {loginMode === "student" && (
+                {!otp && loginMode === "student" && (
                   <>
                     <h2 className="text-lg font-extrabold text-zinc-900 mb-0.5 tracking-tight">Student Sign In</h2>
                     <p className="text-sm text-zinc-500 mb-5">Login with your @greenfield.edu email</p>
@@ -377,7 +485,7 @@ export default function App() {
                 )}
 
                 {/* ── ADMIN LOGIN ── */}
-                {loginMode === "admin" && (
+                {!otp && loginMode === "admin" && (
                   <>
                     <h2 className="text-lg font-extrabold text-zinc-900 mb-0.5 tracking-tight">Admin Sign In</h2>
                     <p className="text-sm text-zinc-500 mb-5">Access the library administration panel</p>
@@ -405,7 +513,7 @@ export default function App() {
                 )}
 
                 {/* ── REGISTER ── */}
-                {loginMode === "register" && (
+                {!otp && loginMode === "register" && (
                   <>
                     <h2 className="text-lg font-extrabold text-zinc-900 mb-0.5 tracking-tight">Create Account</h2>
                     <p className="text-sm text-zinc-500 mb-5">Register as a new student</p>
