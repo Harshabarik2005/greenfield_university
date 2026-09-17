@@ -4,7 +4,7 @@ A comprehensive, cloud-enabled library management system built for Greenfield Un
 
 ---
 
-### � Live Demo
+###   Live Demo
 **[Instant Library Platform](https://instant-library-frontend.vercel.app/)**
 
 ---
@@ -28,7 +28,7 @@ A comprehensive, cloud-enabled library management system built for Greenfield Un
 
 ---
 
-## �🌟 Key Features
+##  🌟 Key Features
 
 ### Student Portal
 - **Authentication**: Secure Login and Registration using a Greenfield University email address.
@@ -50,10 +50,10 @@ A comprehensive, cloud-enabled library management system built for Greenfield Un
 Greenfield Library is a fully robust, cloud-enabled application leveraging modern AWS services to ensure high availability, scalability, and performance:
 
 - **Frontend**: React (Vite) offering a fast, responsive, and aesthetically premium dark-mode interface.
-- **Backend & API**: Node.js (Express), providing secure and efficient endpoints for the frontend.
+- **Backend & API**: Python (Flask), providing secure and efficient REST endpoints for the frontend, with JWT authentication and boto3 for AWS integrations.
 - **Amazon S3**: Used for robust object storage. Hosts high-quality book cover images and serves digital PDF access securely via presigned URLs.
 - **Amazon DynamoDB**: A highly scalable NoSQL database utilized for storing book metadata, user accounts, and real-time transaction logs of borrow requests.
-- **Amazon EC2**: The Node.js production backend server is hosted on reliable EC2 instances, ensuring low latency and consistent uptime.
+- **Amazon EC2**: The Flask production backend server (served by Gunicorn) is hosted on reliable EC2 instances, ensuring low latency and consistent uptime.
 - **Amazon SNS (Simple Notification Service)**: (Integrated) Used to asynchronously trigger event-driven notifications—such as instant updates to students when their book requests are approved.
 
 ---
@@ -61,7 +61,8 @@ Greenfield Library is a fully robust, cloud-enabled application leveraging moder
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18 or higher)
+- Node.js (v18 or higher) for the frontend
+- Python (3.10 or higher) for the backend
 - AWS Account with corresponding credentials configured (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
 
 ### Installation
@@ -83,9 +84,16 @@ Greenfield Library is a fully robust, cloud-enabled application leveraging moder
 3. **Backend Setup:**
    ```bash
    cd ../instant-library-backend
-   npm install
+   python -m venv .venv
+   source .venv/bin/activate   # Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
    # Configure your .env file with AWS Credentials, DB configuration, etc.
-   npm start
+   python app.py
+   ```
+
+   For production (e.g. on EC2), run it with Gunicorn:
+   ```bash
+   gunicorn -w 1 --threads 4 -b 0.0.0.0:4000 app:app
    ```
 
 ## 📄 License
